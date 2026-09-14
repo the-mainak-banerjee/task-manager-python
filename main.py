@@ -1,7 +1,33 @@
 from datetime import date
 import json
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, field_validator
+from typing import Literal
 
 FILE_NAME = "tasks.json"
+
+
+class DueDateMixin(BaseModel):
+    due_date: date | None = None
+
+    @field_validator("due_date")
+    @classmethod
+    def due_date_not_in_past(cls, value):
+        if value is not None and value < date.today():
+            raise ValueError("due_date cannot be in the past")
+        return value
+
+
+class TaskCreate(DueDateMixin):
+    title: str
+    # This syntax with a value tells pydantic that these fields are non requiered fields
+    priority: Literal["Low", "Medium", "High"] = "Medium"
+
+
+class TaskUpdate(DueDateMixin):
+    title: str | None = None
+    priority: Literal["Low", "Medium", "High"] | None = None
+    completed: bool | None = None
 
 
 class Task:
@@ -50,14 +76,39 @@ class Task:
             f"[{status}] {self.title} (priority={self.priority}, due={self.due_date})"
         )
 
+app = FastAPI()
 
-task1 = Task(
-    1, "Read Python", priority="High", due_date=date(2026, 9, 20), completed=False
-)
-task2 = Task(2, "Read AI", priority="High", due_date=None, completed=False)
-task3 = Task(3, "Read AI", priority="High", due_date=date(2026, 9, 10), completed=False)
+@app.get("/tasks")
+def get_tasks():
+    try:
+        tasks = load_tasks()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to load tasks")
+    return [task.to_dict() for task in tasks]
 
-task_list = [task1, task2, task3]
+
+# This is the part where FastAPI's magic kicks in: just by typing the parameter as TaskCreate, FastAPI automatically reads the incoming JSON request body, validates it against the Pydantic model, and hands back a proper TaskCreate instance (not a raw dict) — or automatically returns a 422 Unprocessable Entity error to the client if validation fails, without manually writing any validation code
+@app.post("/tasks")
+def create_task(task: TaskCreate):
+    created_task = add_task(title=task.title, priority=task.priority, due_date=task.due_date)
+    return created_task.to_dict()
+
+
+@app.delete("/tasks/{task_id}")
+def delete_task_handler(task_id:int):
+    deleted = delete_task(task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Task with id {task_id} not found")
+    return {"message": f"Task with id {task_id} deleted successfully"}
+
+
+@app.patch("/tasks/{task_id}")
+def update_task_handler(task_id:int, updates:TaskUpdate):
+    updated_task = update_task(task_id, updates)
+
+    if not updated_task:
+        raise HTTPException(status_code=404, detail=f"Task with id {task_id} not found")
+    return updated_task.to_dict()
 
 
 def load_tasks():
@@ -107,12 +158,29 @@ def delete_task(task_id):
     # checks whether at least one task in tasks has an ID equal to task_id.
     task_exists = any(task.id == task_id for task in tasks)
     if not task_exists:
-        return f"Task with id {task_id} not found"
+        return False
 
     updated_task = list(filter(lambda task: task.id != task_id, tasks))
     save_tasks(updated_task)
-    return f"Task with id {task_id} deleted successfully"
+    return True
 
 
-# print(add_task("Fun", "High", date(2026,9,15)))
-print(delete_task(1))
+def update_task(task_id, updates):
+    tasks = load_tasks()
+    task = next((task for task in tasks if task.id == task_id), None)
+
+    if task is None:
+        return False
+
+    update_data = updates.model_dump(exclude_unset = True)
+    for field, value in update_data.items():
+        setattr(task, field, value)
+
+    # setattr() is a built-in Python function that lets you set an object's attribute dynamically. Other related functions are -
+    # getattr(obj, "name")  get an attribute
+    # setattr(obj, "name", value)   # set an attribute
+    # hasattr(obj, "name")          # check if attribute exists
+    # delattr(obj, "name")          # delete an attribute
+
+    save_tasks(tasks)
+    return task

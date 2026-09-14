@@ -1,23 +1,16 @@
 [
     {
+        "id": 1,
+        "title": "Read Namaste AI",
+        "priority": "High",
+        "completed": false,
+        "due_date": "2026-09-18"
+    },
+    {
         "id": 2,
-        "title": "Read AI",
+        "title": "Complete two Python projects",
         "priority": "High",
         "completed": false,
-        "due_date": null
-    },
-    {
-        "id": 3,
-        "title": "Read AI",
-        "priority": "High",
-        "completed": false,
-        "due_date": "2026-09-10"
-    },
-    {
-        "id": 4,
-        "title": "Watch namaste AI",
-        "priority": "High",
-        "completed": false,
-        "due_date": "2026-09-15"
+        "due_date": "2026-09-16"
     }
 ]
