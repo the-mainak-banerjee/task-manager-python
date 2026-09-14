@@ -1,8 +1,10 @@
 from datetime import date
-import json
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
 from typing import Literal
+from contextlib import asynccontextmanager
+import json
+import asyncio
 
 FILE_NAME = "tasks.json"
 
@@ -76,7 +78,25 @@ class Task:
             f"[{status}] {self.title} (priority={self.priority}, due={self.due_date})"
         )
 
-app = FastAPI()
+
+async def check_overdue_tasks():
+    while True:
+        tasks = load_tasks()
+        for task in tasks:
+            if task.is_overdue():
+                print(f"Task {task.id} is overdue: {task.title}")
+        await asyncio.sleep(10)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: fire off the background task
+    asyncio.create_task(check_overdue_tasks())
+    yield
+    # Shutdown: nothing to clean up for now
+
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/tasks")
 def get_tasks():
